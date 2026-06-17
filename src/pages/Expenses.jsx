@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, CheckCircle, Circle, AlertCircle } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, Circle, AlertCircle } from 'lucide-react'
 import { useData } from '../lib/data'
 import { useToast } from '../lib/toast'
 import Modal from '../components/Modal'
@@ -16,17 +16,23 @@ export default function Expenses() {
   const toast = useToast()
   const [filterEvent, setFilterEvent] = useState('all')
   const [filterPaid,  setFilterPaid]  = useState('all')
-  const [modal, setModal]             = useState(false)
+  const [modal, setModal]             = useState(null)
   const [form, setForm]               = useState(BLANK)
   const [saving, setSaving]           = useState(false)
 
-  const openAdd = () => { setForm({ ...BLANK, event_id: events[0]?.id || '' }); setModal(true) }
+  const openAdd = () => { setForm({ ...BLANK, event_id: events[0]?.id || '' }); setModal('add') }
+  const openEdit = (e) => { setForm({ event_id: e.event_id || '', category: e.category || 'Venue', description: e.description || '', amount: e.amount || '', paid: e.paid || false, notes: e.notes || '' }); setModal(e) }
+  const closeModal = () => setModal(null)
 
   const handleSave = async () => {
     if (!form.description.trim())        { toast('Description is required.','error'); return }
     if (!form.amount || isNaN(form.amount)) { toast('Please enter a valid amount.','error'); return }
     setSaving(true)
-    try { await addExpense({ ...form, amount: parseFloat(form.amount) }); setModal(false) }
+    try {
+      if (modal === 'add') await addExpense({ ...form, amount: parseFloat(form.amount) })
+      else await updateExpense(modal.id, { ...form, amount: parseFloat(form.amount) })
+      closeModal()
+    }
     catch(e) { toast(e.message,'error') }
     setSaving(false)
   }
@@ -183,7 +189,12 @@ export default function Expenses() {
                         <td><span className="badge badge-gold">{e.category}</span></td>
                         <td style={{ fontSize:13,color:'rgba(240,237,232,.55)'}}>{evName}</td>
                         <td style={{ textAlign:'right',fontFamily:"'Cormorant Garamond',serif",fontSize:18,color:e.paid?'#6dbb87':'#e07070'}}>₨ {fmt(e.amount)}</td>
-                        <td><button className="btn btn-danger btn-sm" style={{ padding:'5px 9px'}} onClick={()=>handleDelete(e.id)}><Trash2 size={13}/></button></td>
+                        <td>
+                          <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
+                            <button className="btn btn-ghost btn-sm" style={{ padding:'5px 9px'}} onClick={()=>openEdit(e)}><Edit2 size={13}/></button>
+                            <button className="btn btn-danger btn-sm" style={{ padding:'5px 9px'}} onClick={()=>handleDelete(e.id)}><Trash2 size={13}/></button>
+                          </div>
+                        </td>
                       </tr>
                     )
                   })}
@@ -210,9 +221,14 @@ export default function Expenses() {
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
                         <span style={{ fontWeight:500, textDecoration:e.paid?'line-through':'none', textDecorationColor:'rgba(240,237,232,.3)', fontSize:14}}>{e.description}</span>
-                        <button onClick={()=>handleDelete(e.id)} style={{ background:'none',border:'none',color:'rgba(240,237,232,.3)',cursor:'pointer',flexShrink:0,padding:4}}>
-                          <Trash2 size={15}/>
-                        </button>
+                        <div style={{ display:'flex', gap:4, flexShrink:0 }}>
+                          <button onClick={()=>openEdit(e)} style={{ background:'none',border:'none',color:'rgba(240,237,232,.5)',cursor:'pointer',padding:4}}>
+                            <Edit2 size={15}/>
+                          </button>
+                          <button onClick={()=>handleDelete(e.id)} style={{ background:'none',border:'none',color:'rgba(240,237,232,.3)',cursor:'pointer',padding:4}}>
+                            <Trash2 size={15}/>
+                          </button>
+                        </div>
                       </div>
                       <div style={{ fontSize:12,color:'rgba(240,237,232,.45)',marginTop:3}}>{evName} · <span className="badge badge-gold" style={{ fontSize:10,padding:'2px 8px'}}>{e.category}</span></div>
                       {e.notes&&<div style={{ fontSize:11,color:'rgba(240,237,232,.35)',marginTop:3}}>{e.notes}</div>}
@@ -230,7 +246,7 @@ export default function Expenses() {
       }
 
       {modal && (
-        <Modal title="Add Expense" onClose={()=>setModal(false)}>
+        <Modal title={modal === 'add' ? "Add Expense" : "Edit Expense"} onClose={closeModal}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }} className="form-grid">
             <div>
               <label className="lbl">Event</label>
@@ -264,9 +280,9 @@ export default function Expenses() {
           </div>
           <div style={{ display:'flex', gap:10 }}>
             <button className="btn btn-gold" style={{ flex:1 }} onClick={handleSave} disabled={saving}>
-              {saving?'Adding…':'Add Expense'}
+              {saving ? 'Saving…' : modal === 'add' ? 'Add Expense' : 'Save Changes'}
             </button>
-            <button className="btn btn-ghost" onClick={()=>setModal(false)}>Cancel</button>
+            <button className="btn btn-ghost" onClick={closeModal}>Cancel</button>
           </div>
         </Modal>
       )}
