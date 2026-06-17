@@ -1,12 +1,20 @@
 import { useState } from 'react'
-import { Plus, Edit2, Trash2, CheckCircle, Circle, AlertCircle } from 'lucide-react'
+import { Plus, Edit2, Trash2, Settings, CheckCircle, Circle, AlertCircle } from 'lucide-react'
 import { useData } from '../lib/data'
 import { useToast } from '../lib/toast'
 import Modal from '../components/Modal'
 
-const CATEGORIES = ['Venue','Catering','Decor','Travel','Photography','Videography',
+const DEFAULT_CATEGORIES = ['Venue','Catering','Decor','Travel','Photography','Videography',
   'Music / DJ','Outfit / Dress','Jewelry','Invitation Cards','Gifts','Makeup / Hair',
   'Flowers','Lighting','Transportation','Accommodation','Miscellaneous']
+
+const getInitialCategories = () => {
+  try {
+    const saved = localStorage.getItem('wedding_categories')
+    if (saved) return JSON.parse(saved)
+  } catch (e) {}
+  return DEFAULT_CATEGORIES
+}
 
 const BLANK = { event_id:'', category:'Venue', description:'', amount:'', paid:false, notes:'' }
 const fmt = n => Number(n).toLocaleString('en-US', { minimumFractionDigits:0 })
@@ -14,15 +22,57 @@ const fmt = n => Number(n).toLocaleString('en-US', { minimumFractionDigits:0 })
 export default function Expenses() {
   const { events, expenses, addExpense, updateExpense, deleteExpense, loading } = useData()
   const toast = useToast()
-  const [filterEvent, setFilterEvent] = useState('all')
+  const [categories, setCategories]   = useState(getInitialCategories)
+  const [filterCategory, setFilterCategory] = useState('all')
   const [filterPaid,  setFilterPaid]  = useState('all')
   const [modal, setModal]             = useState(null)
+  const [catModal, setCatModal]       = useState(false)
+  const [newCatName, setNewCatName]   = useState('')
+  const [editingCat, setEditingCat]   = useState(null)
   const [form, setForm]               = useState(BLANK)
   const [saving, setSaving]           = useState(false)
 
-  const openAdd = () => { setForm({ ...BLANK, event_id: events[0]?.id || '' }); setModal('add') }
-  const openEdit = (e) => { setForm({ event_id: e.event_id || '', category: e.category || 'Venue', description: e.description || '', amount: e.amount || '', paid: e.paid || false, notes: e.notes || '' }); setModal(e) }
+  const openAdd = () => { setForm({ ...BLANK, category: categories[0] || 'Venue', event_id: events[0]?.id || '' }); setModal('add') }
+  const openEdit = (e) => { setForm({ event_id: e.event_id || '', category: e.category || categories[0] || 'Venue', description: e.description || '', amount: e.amount || '', paid: e.paid || false, notes: e.notes || '' }); setModal(e) }
   const closeModal = () => setModal(null)
+
+  const handleAddCategory = () => {
+    const trimmed = newCatName.trim()
+    if (!trimmed) return
+    if (categories.includes(trimmed)) { toast('Category already exists.', 'error'); return }
+    const updated = [...categories, trimmed]
+    setCategories(updated)
+    localStorage.setItem('wedding_categories', JSON.stringify(updated))
+    setNewCatName('')
+    toast('Category added!')
+  }
+
+  const handleRenameCategory = async (oldName, newName) => {
+    const trimmed = newName.trim()
+    if (!trimmed || (categories.includes(trimmed) && trimmed !== oldName)) {
+      toast('Invalid or duplicate category name.', 'error')
+      return
+    }
+    const updated = categories.map(c => c === oldName ? trimmed : c)
+    setCategories(updated)
+    localStorage.setItem('wedding_categories', JSON.stringify(updated))
+    const toUpdate = expenses.filter(e => e.category === oldName)
+    for (const exp of toUpdate) {
+      await updateExpense(exp.id, { category: trimmed })
+    }
+    if (filterCategory === oldName) setFilterCategory(trimmed)
+    setEditingCat(null)
+    toast('Category renamed.')
+  }
+
+  const handleDeleteCategory = (cat) => {
+    if (!confirm(`Remove category "${cat}"? Existing expenses in this category will not be deleted.`)) return
+    const updated = categories.filter(c => c !== cat)
+    setCategories(updated)
+    localStorage.setItem('wedding_categories', JSON.stringify(updated))
+    if (filterCategory === cat) setFilterCategory('all')
+    toast('Category removed.')
+  }
 
   const handleSave = async () => {
     if (!form.description.trim())        { toast('Description is required.','error'); return }
@@ -50,8 +100,8 @@ export default function Expenses() {
   const f = (k,v) => setForm(p=>({...p,[k]:v}))
 
   let filtered = expenses
-  if (filterEvent !== 'all') filtered = filtered.filter(e=>e.event_id===filterEvent)
-  if (filterPaid  !== 'all') filtered = filtered.filter(e=>filterPaid==='paid'?e.paid:!e.paid)
+  if (filterCategory !== 'all') filtered = filtered.filter(e=>e.category===filterCategory)
+  if (filterPaid     !== 'all') filtered = filtered.filter(e=>filterPaid==='paid'?e.paid:!e.paid)
 
   const total   = filtered.reduce((s,e)=>s+Number(e.amount),0)
   const paid    = filtered.filter(e=>e.paid).reduce((s,e)=>s+Number(e.amount),0)
@@ -70,14 +120,19 @@ export default function Expenses() {
 
   return (
     <div className="fade-up">
-      <div className="page-header">
+      <div className="page-header" style={{ flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 className="page-title">Expenses</h1>
           <p className="page-sub">Track every rupee of your budget</p>
         </div>
-        <button className="btn btn-gold" onClick={openAdd} disabled={events.length===0}>
-          <Plus size={16}/> Add Expense
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost" onClick={() => setCatModal(true)}>
+            <Settings size={16}/> Categories
+          </button>
+          <button className="btn btn-gold" onClick={openAdd} disabled={events.length===0}>
+            <Plus size={16}/> Add Expense
+          </button>
+        </div>
       </div>
 
       {events.length===0 && (
@@ -149,10 +204,10 @@ export default function Expenses() {
       </div>
 
       {/* Filters */}
-      <div className="pill-tabs">
-        <button className={`pill${filterEvent==='all'?' active':''}`} onClick={()=>setFilterEvent('all')}>All Events</button>
-        {events.map(e=>(
-          <button key={e.id} className={`pill${filterEvent===e.id?' active':''}`} onClick={()=>setFilterEvent(e.id)}>{e.name}</button>
+      <div className="pill-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <button className={`pill${filterCategory==='all'?' active':''}`} onClick={()=>setFilterCategory('all')}>All Categories</button>
+        {categories.map(c=>(
+          <button key={c} className={`pill${filterCategory===c?' active':''}`} onClick={()=>setFilterCategory(c)}>{c}</button>
         ))}
       </div>
       <div className="pill-tabs">
@@ -258,7 +313,7 @@ export default function Expenses() {
             <div>
               <label className="lbl">Category</label>
               <select className="inp" value={form.category} onChange={e=>f('category',e.target.value)}>
-                {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                {categories.map(c=><option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div style={{ gridColumn:'1/-1' }}>
@@ -283,6 +338,39 @@ export default function Expenses() {
               {saving ? 'Saving…' : modal === 'add' ? 'Add Expense' : 'Save Changes'}
             </button>
             <button className="btn btn-ghost" onClick={closeModal}>Cancel</button>
+          </div>
+        </Modal>
+      )}
+
+      {catModal && (
+        <Modal title="Manage Categories" onClose={() => setCatModal(false)}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <input className="inp" placeholder="New category name…" value={newCatName} onChange={e => setNewCatName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddCategory()} />
+            <button className="btn btn-gold" onClick={handleAddCategory}>Add</button>
+          </div>
+          <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+            {categories.map(c => (
+              <div key={c} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(196,168,130,.06)', borderRadius: 8, border: '1px solid rgba(196,168,130,.1)' }}>
+                {editingCat?.oldName === c ? (
+                  <div style={{ display: 'flex', gap: 6, flex: 1, marginRight: 8 }}>
+                    <input className="inp" style={{ padding: '4px 8px', fontSize: 13 }} value={editingCat.name} onChange={e => setEditingCat({ ...editingCat, name: e.target.value })} autoFocus />
+                    <button className="btn btn-gold btn-sm" style={{ padding: '4px 10px' }} onClick={() => handleRenameCategory(c, editingCat.name)}>Save</button>
+                    <button className="btn btn-ghost btn-sm" style={{ padding: '4px 10px' }} onClick={() => setEditingCat(null)}>Cancel</button>
+                  </div>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 14, color: 'rgba(240,237,232,.8)' }}>{c}</span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }} onClick={() => setEditingCat({ oldName: c, name: c })}><Edit2 size={13} /></button>
+                      <button className="btn btn-danger btn-sm" style={{ padding: '4px 8px' }} onClick={() => handleDeleteCategory(c)}><Trash2 size={13} /></button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn btn-ghost" onClick={() => setCatModal(false)}>Done</button>
           </div>
         </Modal>
       )}
