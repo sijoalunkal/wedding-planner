@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Edit2, Trash2, Settings, CheckCircle, Circle, AlertCircle } from 'lucide-react'
+import { Plus, Edit2, Trash2, Settings, Filter, CheckCircle, Circle, AlertCircle } from 'lucide-react'
 import { useData } from '../lib/data'
 import { useToast } from '../lib/toast'
 import Modal from '../components/Modal'
@@ -203,19 +203,34 @@ export default function Expenses() {
         )}
       </div>
 
-      {/* Filters */}
-      <div className="pill-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        <button className={`pill${filterCategory==='all'?' active':''}`} onClick={()=>setFilterCategory('all')}>All Categories</button>
-        {categories.map(c=>(
-          <button key={c} className={`pill${filterCategory===c?' active':''}`} onClick={()=>setFilterCategory(c)}>{c}</button>
-        ))}
-      </div>
-      <div className="pill-tabs">
-        {['all','paid','unpaid'].map(v=>(
-          <button key={v} className={`pill${filterPaid===v?' active':''}`} onClick={()=>setFilterPaid(v)}>
-            {v.charAt(0).toUpperCase()+v.slice(1)}
-          </button>
-        ))}
+      {/* Sleek Filter Bar */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 16, background: 'rgba(196,168,130,.05)', padding: '12px 16px', borderRadius: 12,
+        border: '1px solid rgba(196,168,130,.15)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#c4a882', fontSize: 13, fontWeight: 500 }}>
+            <Filter size={15} />
+            <span>Category:</span>
+          </div>
+          <select className="inp" style={{ padding: '7px 14px', fontSize: 13, width: 'auto', minWidth: 180, borderRadius: 8, cursor: 'pointer' }}
+            value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+            <option value="all">All Categories ({expenses.length})</option>
+            {categories.map(c => {
+              const cnt = expenses.filter(e => e.category === c).length
+              return <option key={c} value={c}>{c} {cnt > 0 ? `(${cnt})` : ''}</option>
+            })}
+          </select>
+        </div>
+
+        <div className="pill-tabs" style={{ margin: 0 }}>
+          {['all','paid','unpaid'].map(v => (
+            <button key={v} className={`pill${filterPaid===v?' active':''}`} style={{ padding: '6px 14px', fontSize: 12 }} onClick={() => setFilterPaid(v)}>
+              {v.charAt(0).toUpperCase() + v.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {filtered.length===0
